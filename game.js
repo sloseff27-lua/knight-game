@@ -26,8 +26,8 @@ const player = {
   height: 50,
   speed: 4,
   color: "blue",
-  health: 1, // player health
-  maxHealth: 1,
+  health: 100, // player health
+  maxHealth: 100,
   facing: "right",
   attackTimer: 0,
   attackCooldown: 0,
