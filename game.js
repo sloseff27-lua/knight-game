@@ -22,6 +22,10 @@ healthBarEmpty.src = "UserInterface/EmptyHealthBar.png";
 const healthBarFull = new Image();
 healthBarFull.src = "UserInterface/FullHealthBar.png";
 
+// [shop image]
+const shopImage = new Image();
+shopImage.src = "UserInterface/MerchantTable.png";
+
 // ============================================================
 // GAME STATE
 // ============================================================
@@ -31,6 +35,9 @@ let roomIsCleared = false;
 let fadeAlpha = 0;
 let fading = false;
 let fadeDirection = "out";
+let isShopRoom = false;
+let shopOpen = false;
+let shopHealMessage = ""; // [shop heal message]
 
 // ============================================================
 // PLAYER OBJECT
@@ -41,7 +48,8 @@ const player = {
   y: canvas.height / 1.35,
   width: 50,
   height: 50,
-  speed: 4,                 // [player speed]
+  speed: 13,                 // [player speed]
+  maxSpeed: 13,             // [player speed cap]
   color: "slategray",
   health: 100,              // [player health]
   maxHealth: 100,
@@ -60,20 +68,46 @@ const coins = [];
 let coinCount = 0;
 
 // ============================================================
+// SHOP SYSTEM
+// ============================================================
+// [shop config]
+const shopBox = {
+  x: canvas.width / 2 - 25,
+  y: canvas.height / 2 - 25,
+  width: 50,
+  height: 50
+};
+const shopProximity = 150; // [shop proximity radius]
+
+// [shop prices]
+function getShopPrices() {
+  const shopNumber = Math.floor(roomNumber / 5);
+  const multiplier = 1 + (shopNumber * 0.5);
+  return {
+    damagePrice: Math.floor(10 * multiplier),
+    healthPrice: Math.floor(15 * multiplier),
+    speedPrice:  Math.floor(10 * multiplier)
+  };
+}
+
+// ============================================================
 // ENEMY SYSTEM
 // ============================================================
 // [enemy config]
 const enemies = [];
 
 function spawnEnemies() {
+  if (isShopRoom) return;
+
   const minDistFromPlayer = 200;
 
-  // [enemy count]
-  const enemyCount = 3 + roomNumber;
+  // [enemy count] capped at 8
+  const enemyCount = Math.min(3 + roomNumber, 20);
   // [enemy speed]
   const enemySpeed = 1.5 + (roomNumber * 0.1);
   // [enemy health]
   const enemyHealth = 60 + (roomNumber * 10);
+
   for (let i = 0; i < enemyCount; i++) {
     let ex, ey, attempts = 0;
 
@@ -118,12 +152,25 @@ const exitDoor = {
 function advanceRoom() {
   roomNumber++;
   roomIsCleared = false;
+  shopOpen = false;
+  shopHealMessage = "";
+
+  // Detect if next room is a shop room
+  isShopRoom = (roomNumber % 5 === 0) && (roomNumber % 10 !== 0);
+
+  // [auto heal on shop entry]
+  if (isShopRoom) {
+    roomIsCleared = true;
+    const healAmount = player.maxHealth * 0.5;
+    player.health = Math.min(player.maxHealth, player.health + healAmount);
+    shopHealMessage = "You were healed for " + Math.floor(healAmount) + " HP!";
+  }
 
   // Reset player position
   player.x = canvas.width / 2.08;
   player.y = canvas.height / 1.35;
 
-  // Clear enemies, coins and spawn new enemies
+  // Clear enemies and coins
   enemies.length = 0;
   coins.length = 0;         // [clear coins]
   spawnEnemies();
@@ -149,6 +196,37 @@ window.addEventListener("mousedown", (e) => {
 
 window.addEventListener("mouseup", (e) => {
   if (e.button === 0) keys["click"] = false;
+});
+
+// [shop purchase handler]
+window.addEventListener("keydown", (e) => {
+  if (!shopOpen) return;
+  const prices = getShopPrices();
+
+  // Press 1 — +20% Damage
+  if (e.key === "1") {
+    if (coinCount >= prices.damagePrice) {
+      coinCount -= prices.damagePrice;
+      player.damage = Math.floor(player.damage * 1.2);
+    }
+  }
+
+  // Press 2 — +20% Max Health
+  if (e.key === "2") {
+    if (coinCount >= prices.healthPrice) {
+      coinCount -= prices.healthPrice;
+      player.maxHealth = Math.floor(player.maxHealth * 1.2);
+      player.health = Math.min(player.health + player.maxHealth * 0.1, player.maxHealth);
+    }
+  }
+
+  // Press 3 — +20% Speed (capped at maxSpeed)
+  if (e.key === "3") {
+    if (coinCount >= prices.speedPrice) {
+      coinCount -= prices.speedPrice;
+      player.speed = Math.min(parseFloat((player.speed * 1.2).toFixed(2)), player.maxSpeed);
+    }
+  }
 });
 
 // ============================================================
@@ -181,97 +259,117 @@ function update() {
     player.x = Math.max(250, Math.min(canvas.width - player.width - 250, player.x));
     player.y = Math.max(160, Math.min(canvas.height - player.height - 130, player.y));
 
-    // [enemy movement]
-    enemies.forEach(enemy => {
-      const dx = player.x - enemy.x;
-      const dy = player.y - enemy.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      enemy.x += (dx / dist) * enemy.speed;
-      enemy.y += (dy / dist) * enemy.speed;
-    });
+    if (!isShopRoom) {
 
-    // [enemy damage to player]
-    enemies.forEach(enemy => {
-      if (rectsOverlap(player, enemy)) {
-        const dx = enemy.x - player.x;
-        const dy = enemy.y - player.y;
+      // [enemy movement]
+      enemies.forEach(enemy => {
+        const dx = player.x - enemy.x;
+        const dy = player.y - enemy.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        enemy.x += (dx / dist) * 2;
-        enemy.y += (dy / dist) * 2;
-        player.health -= 0.3;         // [enemy damage per tick]
-      }
-    });
+        enemy.x += (dx / dist) * enemy.speed;
+        enemy.y += (dy / dist) * enemy.speed;
+      });
 
-    // [health clamp]
-    player.health = Math.max(0, player.health);
+      // [enemy damage to player]
+      enemies.forEach(enemy => {
+        if (rectsOverlap(player, enemy)) {
+          // Calculate push direction
+          const dx = enemy.x - player.x;
+          const dy = enemy.y - player.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    // [player facing]
-    if (keys["w"] || keys["ArrowUp"])    player.facing = "up";
-    if (keys["s"] || keys["ArrowDown"])  player.facing = "down";
-    if (keys["a"] || keys["ArrowLeft"])  player.facing = "left";
-    if (keys["d"] || keys["ArrowRight"]) player.facing = "right";
+          // Push force scales with enemy speed so fast enemies still get pushed out
+          const pushForce = enemy.speed + 3;
+          enemy.x += (dx / dist) * pushForce;
+          enemy.y += (dy / dist) * pushForce;
 
-    // [attack input]
-    if ((keys[" "] || keys["click"]) && player.attackCooldown <= 0) {
-      player.attackTimer = 20;
-      player.attackCooldown = 30;
-      player.attackHits = [];
-    }
-
-    // [attack timers]
-    if (player.attackTimer > 0)    player.attackTimer--;
-    if (player.attackCooldown > 0) player.attackCooldown--;
-
-    // [attack hitbox]
-    if (player.attackTimer > 0) {
-      let hx = player.x, hy = player.y, hw = 60, hh = 60;
-
-      if (player.facing === "right") { hx = player.x + player.width;  hy = player.y - 5; }
-      if (player.facing === "left")  { hx = player.x - hw;            hy = player.y - 5; }
-      if (player.facing === "down")  { hx = player.x - 5;             hy = player.y + player.height; }
-      if (player.facing === "up")    { hx = player.x - 5;             hy = player.y - hh; }
-
-      const attackBox = { x: hx, y: hy, width: hw, height: hh };
-
-      // [attack hits enemy]
-      enemies.forEach((enemy, index) => {
-        if (rectsOverlap(attackBox, enemy) && !player.attackHits.includes(index)) {
-          enemy.health -= player.damage;
-          player.attackHits.push(index);
+          // [enemy damage per tick] capped at 0.7
+          const rawDamage = 0.3 + (roomNumber * 0.02);
+          player.health -= Math.min(rawDamage, 0.7);
         }
       });
 
-      // [enemy removal + coin drop]
-      for (let i = enemies.length - 1; i >= 0; i--) {
-        if (enemies[i].health <= 0) {
-          // Drop coin at enemy's center
-          coins.push({
-            x: enemies[i].x + enemies[i].width / 2 - 5,
-            y: enemies[i].y + enemies[i].height / 2 - 5,
-            width: 10,
-            height: 10
-          });
-          enemies.splice(i, 1);
+      // [health clamp]
+      player.health = Math.max(0, player.health);
+
+      // [player facing]
+      if (keys["w"] || keys["ArrowUp"])    player.facing = "up";
+      if (keys["s"] || keys["ArrowDown"])  player.facing = "down";
+      if (keys["a"] || keys["ArrowLeft"])  player.facing = "left";
+      if (keys["d"] || keys["ArrowRight"]) player.facing = "right";
+
+      // [attack input]
+      if ((keys[" "] || keys["click"]) && player.attackCooldown <= 0) {
+        player.attackTimer = 20;
+        player.attackCooldown = 30;
+        player.attackHits = [];
+      }
+
+      // [attack timers]
+      if (player.attackTimer > 0)    player.attackTimer--;
+      if (player.attackCooldown > 0) player.attackCooldown--;
+
+      // [attack hitbox]
+      if (player.attackTimer > 0) {
+        let hx = player.x, hy = player.y, hw = 60, hh = 60;
+
+        if (player.facing === "right") { hx = player.x + player.width;  hy = player.y - 5; }
+        if (player.facing === "left")  { hx = player.x - hw;            hy = player.y - 5; }
+        if (player.facing === "down")  { hx = player.x - 5;             hy = player.y + player.height; }
+        if (player.facing === "up")    { hx = player.x - 5;             hy = player.y - hh; }
+
+        const attackBox = { x: hx, y: hy, width: hw, height: hh };
+
+        // [attack hits enemy]
+        enemies.forEach((enemy, index) => {
+          if (rectsOverlap(attackBox, enemy) && !player.attackHits.includes(index)) {
+            enemy.health -= player.damage;
+            player.attackHits.push(index);
+          }
+        });
+
+        // [enemy removal + coin drop]
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          if (enemies[i].health <= 0) {
+            coins.push({
+              x: enemies[i].x + enemies[i].width / 2 - 5,
+              y: enemies[i].y + enemies[i].height / 2 - 5,
+              width: 10,
+              height: 10
+            });
+            enemies.splice(i, 1);
+          }
         }
+      }
+
+      // [coin collection]
+      const pickupRadius = 60;
+      for (let i = coins.length - 1; i >= 0; i--) {
+        const cx = coins[i].x + 5;
+        const cy = coins[i].y + 5;
+        const px = player.x + player.width / 2;
+        const py = player.y + player.height / 2;
+        const dist = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2);
+        if (dist < pickupRadius) {
+          coinCount++;
+          coins.splice(i, 1);
+        }
+      }
+
+      // [room clear check]
+      if (enemies.length === 0 && !roomIsCleared) {
+        roomIsCleared = true;
       }
     }
 
-    // [coin collection]
-    const pickupRadius = 60; // larger than player for smooth pickup
-    for (let i = coins.length - 1; i >= 0; i--) {
-      const cx = coins[i].x + 5;
-      const cy = coins[i].y + 5;
+    // [shop proximity check]
+    if (isShopRoom) {
       const px = player.x + player.width / 2;
       const py = player.y + player.height / 2;
-      const dist = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2);
-      if (dist < pickupRadius) {
-        coinCount++;
-        coins.splice(i, 1);
-      }
-    }
-    // [room clear check]
-    if (enemies.length === 0 && !roomIsCleared) {
-      roomIsCleared = true;
+      const sx = shopBox.x + shopBox.width / 2;
+      const sy = shopBox.y + shopBox.height / 2;
+      const dist = Math.sqrt((px - sx) ** 2 + (py - sy) ** 2);
+      shopOpen = dist < shopProximity;
     }
 
     // [exit door check]
@@ -360,7 +458,7 @@ function render() {
   ctx.fillText("Coins: " + coinCount, 20, barY + barH + 50);
 
   // [draw room cleared message]
-  if (roomIsCleared) {
+  if (roomIsCleared && !isShopRoom) {
     ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
     ctx.font = "bold 36px Courier New";
     ctx.textAlign = "center";
@@ -383,7 +481,94 @@ function render() {
     ctx.fillRect(hx, hy, hw, hh);
   }
 
-  // [draw fade overlay]
+  // [draw shop box]
+  if (isShopRoom) {
+    ctx.drawImage(shopImage, shopBox.x - 100, shopBox.y - 50, 250, 200);
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "bold 20px Courier New";
+    ctx.textAlign = "center";
+    ctx.fillText("SHOP", shopBox.x + shopBox.width / 2, shopBox.y - 30);
+    ctx.textAlign = "left";
+  }
+
+  // [draw shop UI] — drawn last so it is always on top
+  if (shopOpen) {
+    const prices = getShopPrices();
+    const panelX = canvas.width / 2 - 220;
+    const panelY = canvas.height / 2 - 200;
+    const panelW = 440;
+    const panelH = 320;
+
+    // Panel background
+    ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+    ctx.strokeStyle = "#FFD700";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    // Title
+    ctx.fillStyle = "#FFD700";
+    ctx.font = "bold 24px Courier New";
+    ctx.textAlign = "center";
+    ctx.fillText("SHOP", canvas.width / 2, panelY + 38);
+
+    // Coins available
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = "14px Courier New";
+    ctx.fillText("Coins: " + coinCount, canvas.width / 2, panelY + 62);
+
+    // Divider
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 20, panelY + 72);
+    ctx.lineTo(panelX + panelW - 20, panelY + 72);
+    ctx.stroke();
+
+    // Option 1 — Damage
+    const canAffordDamage = coinCount >= prices.damagePrice;
+    ctx.fillStyle = canAffordDamage ? "#ff6644" : "#666666";
+    ctx.font = "bold 16px Courier New";
+    ctx.fillText("[1] +20% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 108);
+
+    // Option 2 — Max Health
+    const canAffordHealth = coinCount >= prices.healthPrice;
+    ctx.fillStyle = canAffordHealth ? "#4488ff" : "#666666";
+    ctx.fillText("[2] +20% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 150);
+
+    // Option 3 — Speed
+    const canAffordSpeed = coinCount >= prices.speedPrice;
+    const speedCapped = player.speed >= player.maxSpeed;
+    ctx.fillStyle = canAffordSpeed && !speedCapped ? "#00ff88" : "#666666";
+    ctx.fillText(
+      speedCapped
+        ? "[3] Speed MAX"
+        : "[3] +20% Speed — " + prices.speedPrice + " coins",
+      canvas.width / 2, panelY + 192
+    );
+
+    // Divider
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 20, panelY + 210);
+    ctx.lineTo(panelX + panelW - 20, panelY + 210);
+    ctx.stroke();
+
+    // Auto heal message
+    ctx.fillStyle = "#aaffaa";
+    ctx.font = "14px Courier New";
+    ctx.fillText(shopHealMessage, canvas.width / 2, panelY + 240);
+
+    // Instructions
+    ctx.fillStyle = "#888888";
+    ctx.font = "13px Courier New";
+    ctx.fillText("Press 1, 2 or 3 to buy. Walk away to close.", canvas.width / 2, panelY + 290);
+    ctx.textAlign = "left";
+  }
+
+  // [draw fade overlay] — always last
   if (fadeAlpha > 0) {
     ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -404,7 +589,8 @@ Promise.all([
   new Promise(res => roomBackground.onload = res),
   new Promise(res => roomCleared.onload = res),
   new Promise(res => healthBarEmpty.onload = res),
-  new Promise(res => healthBarFull.onload = res)
+  new Promise(res => healthBarFull.onload = res),
+  new Promise(res => shopImage.onload = res)
 ]).then(() => {
   gameLoop();
 });
