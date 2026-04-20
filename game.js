@@ -26,13 +26,13 @@ const player = {
   height: 50,
   speed: 4,
   color: "blue",
-  health: 100,
-  maxHealth: 100,
+  health: 1, // player health
+  maxHealth: 1,
   facing: "right",
   attackTimer: 0,
   attackCooldown: 0,
   attackHits: [],
-  damage: 25
+  damage: 25 // player damage
 };
 
 // ============================================================
@@ -48,27 +48,28 @@ const enemies = [];
 function spawnEnemies() {
   const minDistFromPlayer = 200; // minimum spawn distance from player
 
-  for (let i = 0; i < 1; i++) {
+  for (let i = 0; i < 10; i++) { //enemy count
     let ex, ey, attempts = 0;
 
     // Keep trying random positions until far enough from player
     do {
-      ex = Math.random() * (canvas.width - 350) + 200;
-      ey = Math.random() * (canvas.height - 340) + 160;
+      ex = Math.random() * (canvas.width - 550) + 275;
+      ey = Math.random() * (canvas.height - 340) + 180;
       attempts++;
     } while (
       Math.sqrt((ex - player.x) ** 2 + (ey - player.y) ** 2) < minDistFromPlayer
       && attempts < 20
     );
 
+    // enemy config
     enemies.push({
       x: ex,
       y: ey,
       width: 40,
       height: 40,
-      speed: 1.5,
+      speed: 1.5, //enemy speed
       color: "crimson",
-      health: 5
+      health: 50 //enemy health
     });
   }
 }
@@ -141,7 +142,7 @@ function update() {
       const dist = Math.sqrt(dx * dx + dy * dy);
       enemy.x += (dx / dist) * 2;
       enemy.y += (dy / dist) * 2;
-      player.health -= 0.3;
+      player.health -= 0.3; //enemy damage per tick
     }
   });
 
@@ -227,7 +228,7 @@ function render() {
 
   // --- Draw Health Text ---
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "14px Arial";
+  ctx.font = "20px bold Courier New";
   ctx.fillText("HP: " + Math.ceil(player.health) + " / " + player.maxHealth, 10, 50);
 
   // --- Draw Attack Hitbox (yellow flash) ---
