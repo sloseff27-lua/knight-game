@@ -41,6 +41,16 @@ let shopOpen = false;
 let shopHealMessage = "";
 
 // ============================================================
+// PLAYER BASE STATS
+// ============================================================
+// [player base stats]
+const playerBase = {
+  damage: 25,
+  maxHealth: 100,
+  speed: 4
+};
+
+// ============================================================
 // PLAYER OBJECT
 // ============================================================
 // [player config]
@@ -96,28 +106,55 @@ function getShopPrices() {
 // ============================================================
 // [boss config]
 let boss = null;
-let bossMinionsSpawned = false;
+let bossMinionsSpawned75 = false;
+let bossMinionsSpawned50 = false;
+
+// [boss charge state]
+let bossChargeState = "idle";
+let bossChargeTimer = 0;
+let bossChargeCooldown = 0;
+let bossChargeTargetX = 0;
+let bossChargeTargetY = 0;
+let bossTelegraphFlash = 0;
+let bossChargeDamageDealt = false;
+
+// [boss aoe state]
+let bossAoeState = "idle";
+let bossAoeRadius = 0;
+let bossAoeMaxRadius = 300;   // [aoe size]
+let bossAoeCenterX = 0;
+let bossAoeCenterY = 0;
+let bossAoeDamageDealt = false;
+
+// [boss dash cooldown] returns frames to wait
+function getChargeCooldown() {
+  const isEnraged = boss && boss.health <= boss.maxHealth * 0.25;
+  const min = isEnraged ? 140 : 220;
+  const max = isEnraged ? 40 : 80;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 function createBoss() {
   return {
     x: canvas.width / 2 - 60,
     y: canvas.height / 2 - 200,
-    width: 120,                               // [boss size]
+    width: 120,
     height: 120,
-    speed: 0.8,                               // [boss speed] slow and threatening
+    speed: 0.8,
+    baseSpeed: 0.8,
     color: "#8B0000",
-    health: 300 + (roomNumber * 20),          // [boss health] scales with room
+    health: 300 + (roomNumber * 20),
     maxHealth: 300 + (roomNumber * 20),
-    damage: 1.5,                              // [boss damage per tick]
-    coinDrop: 20 + roomNumber                 // [boss coin drop] scales with room
+    damage: 1.5,
+    coinDrop: 20 + roomNumber
   };
 }
 
-// Spawn weaker minions at 50% boss health
+// [spawn boss minions]
 function spawnBossMinions() {
-  const minionCount = 3;
-  const minionSpeed = (1.5 + (roomNumber * 0.1)) * 0.5;  // [minion speed] 50% of normal
-  const minionHealth = (60 + (roomNumber * 10)) * 0.5;   // [minion health] 50% of normal
+  const minionCount = Math.floor(Math.random() * 8) + 8; // [minion count] 8-15
+  const minionSpeed = (1.5 + (roomNumber * 0.1)) * 0.5;
+  const minionHealth = (60 + (roomNumber * 10)) * 0.5;
 
   for (let i = 0; i < minionCount; i++) {
     let ex, ey, attempts = 0;
@@ -133,10 +170,10 @@ function spawnBossMinions() {
     enemies.push({
       x: ex,
       y: ey,
-      width: 25,                              // [minion size] smaller than normal
+      width: 25,
       height: 25,
       speed: minionSpeed,
-      color: "#cc4400",                       // slightly different color from boss
+      color: "#cc4400",
       health: minionHealth
     });
   }
@@ -157,7 +194,7 @@ function spawnEnemies() {
   const enemyCount = Math.min(3 + roomNumber, 13);
   // [enemy speed]
   const enemySpeed = 1.5 + (roomNumber * 0.1);
-  // [enemy health]wd
+  // [enemy health]
   const enemyHealth = 30 + (roomNumber * 10);
 
   for (let i = 0; i < enemyCount; i++) {
@@ -207,9 +244,17 @@ function advanceRoom() {
   shopOpen = false;
   shopHealMessage = "";
   boss = null;
-  bossMinionsSpawned = false;
+  bossMinionsSpawned75 = false;
+  bossMinionsSpawned50 = false;
+  bossChargeState = "idle";
+  bossChargeTimer = 0;
+  bossAoeState = "idle";
+  bossAoeRadius = 0;
+  bossAoeDamageDealt = false;
+  bossChargeDamageDealt = false;
 
-  // Detect room type
+  // Detect room type — change % 1 back to % 10 before submitting
+  // [boss frequency] [shop frequency]
   isBossRoom = (roomNumber % 10 === 0);
   isShopRoom = (roomNumber % 5 === 0) && !isBossRoom;
 
@@ -224,6 +269,7 @@ function advanceRoom() {
   // [spawn boss on boss room entry]
   if (isBossRoom) {
     boss = createBoss();
+    bossChargeCooldown = 60;   // [boss initial attack delay] 3 seconds
   }
 
   // Reset player position
@@ -339,34 +385,150 @@ function update() {
         }
       });
 
-      // [boss movement]
+      // --------------------------------------------------------
+      // BOSS LOGIC
+      // --------------------------------------------------------
       if (boss) {
-        const dx = player.x - boss.x;
-        const dy = player.y - boss.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        boss.x += (dx / dist) * boss.speed;
-        boss.y += (dy / dist) * boss.speed;
+        const isEnraged = boss.health <= boss.maxHealth * 0.25;
 
-        // [boss damage to player]
-        if (rectsOverlap(player, boss)) {
+        // [boss enrage]
+        if (isEnraged) {
+          boss.speed = boss.baseSpeed * 2;
+          boss.damage = 3;
+          boss.color = "#ff0000";
+        }
+
+        // ---- ATTACK DECISION ----
+        // [boss attack decision] one timer controls both attacks
+        if (bossChargeState === "idle" && bossAoeState === "idle") {
+          bossChargeCooldown--;
+          if (bossChargeCooldown <= 0) {
+
+            // measure distance from boss center to player center
+            const pdx = player.x + player.width / 2 - (boss.x + boss.width / 2);
+            const pdy = player.y + player.height / 2 - (boss.y + boss.height / 2);
+            const distToPlayer = Math.sqrt(pdx * pdx + pdy * pdy);
+
+            if (distToPlayer < 200) {
+              // [player close] — trigger AOE
+              bossAoeState = "expanding";
+              bossAoeRadius = 0;
+              bossAoeCenterX = boss.x + boss.width / 2;
+              bossAoeCenterY = boss.y + boss.height / 2;
+              bossAoeDamageDealt = false;
+              bossChargeCooldown = getChargeCooldown();
+            } else {
+              // [player far] — trigger dash
+              bossChargeTargetX = player.x;
+              bossChargeTargetY = player.y;
+              bossChargeState = "telegraphing";
+              // [dash windup]
+              bossChargeTimer = 28;
+              bossTelegraphFlash = 0;
+              bossChargeDamageDealt = false;
+              bossChargeCooldown = getChargeCooldown();
+            }
+          }
+        }
+
+        // ---- CHARGE STATES ----
+        if (bossChargeState === "telegraphing") {
+          bossChargeTimer--;
+          bossTelegraphFlash++;
+          if (bossChargeTimer <= 0) {
+            bossChargeState = "dashing";
+            bossChargeTimer = 30;
+          }
+        }
+
+        if (bossChargeState === "dashing") {
+          bossChargeTimer--;
+          const dx = bossChargeTargetX - boss.x;
+          const dy = bossChargeTargetY - boss.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          boss.x += (dx / dist) * 60;       // [dash speed]
+          boss.y += (dy / dist) * 60;
+
+          // [dash damage] one tick 40% of current HP
+          if (!bossChargeDamageDealt && rectsOverlap(player, boss)) {
+            player.health -= player.maxHealth * 0.4;
+            bossChargeDamageDealt = true;
+            bossChargeState = "cooldown";
+            bossChargeTimer = 40;
+          }
+
+          if (bossChargeTimer <= 0) {
+            bossChargeState = "cooldown";
+            bossChargeTimer = 40;
+          }
+        }
+
+        if (bossChargeState === "cooldown") {
+          bossChargeTimer--;
+          if (bossChargeTimer <= 0) {
+            bossChargeState = "idle";
+          }
+        }
+
+        // ---- AOE STATES ----
+        if (bossAoeState === "expanding") {
+          bossAoeRadius += 4;               // [aoe expansion speed]
+
+          if (!bossAoeDamageDealt) {
+            const px = player.x + player.width / 2;
+            const py = player.y + player.height / 2;
+            const distToCenter = Math.sqrt(
+              (px - bossAoeCenterX) ** 2 +
+              (py - bossAoeCenterY) ** 2
+            );
+            if (bossAoeRadius >= distToCenter - 20 && bossAoeRadius <= distToCenter + 20) {
+              player.health -= player.maxHealth * 0.25;  // [aoe damage] 25% current HP
+              bossAoeDamageDealt = true;
+            }
+          }
+
+          if (bossAoeRadius >= bossAoeMaxRadius) {
+            bossAoeState = "idle";
+            bossAoeRadius = 0;
+            bossChargeCooldown = getChargeCooldown();
+          }
+        }
+
+        // [boss normal movement] only when not in special attack
+        if (bossChargeState === "idle" || bossChargeState === "cooldown") {
+          if (bossAoeState === "idle") {
+            const dx = player.x - boss.x;
+            const dy = player.y - boss.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            boss.x += (dx / dist) * boss.speed;
+            boss.y += (dy / dist) * boss.speed;
+          }
+        }
+
+        // [boss contact damage] only when not dashing
+        if (bossChargeState !== "dashing" && rectsOverlap(player, boss)) {
           const dx = boss.x - player.x;
           const dy = boss.y - player.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const pushForce = boss.speed + 4;
-          boss.x += (dx / dist) * pushForce;
-          boss.y += (dy / dist) * pushForce;
-          player.health -= boss.damage;       // [boss damage per tick]
+          boss.x += (dx / dist) * (boss.speed + 4);
+          boss.y += (dy / dist) * (boss.speed + 4);
+          player.health -= boss.damage;
         }
 
-        // [boss minion spawn at 50% health]
-        if (!bossMinionsSpawned && boss.health <= boss.maxHealth * 0.5) {
+        // [boss minion spawn at 75%]
+        if (!bossMinionsSpawned75 && boss.health <= boss.maxHealth * 0.75) {
           spawnBossMinions();
-          bossMinionsSpawned = true;
+          bossMinionsSpawned75 = true;
+        }
+
+        // [boss minion spawn at 50%]
+        if (!bossMinionsSpawned50 && boss.health <= boss.maxHealth * 0.50) {
+          spawnBossMinions();
+          bossMinionsSpawned50 = true;
         }
 
         // [boss death]
         if (boss.health <= 0) {
-          // Drop lots of coins
           for (let i = 0; i < boss.coinDrop; i++) {
             coins.push({
               x: boss.x + Math.random() * boss.width,
@@ -375,9 +537,10 @@ function update() {
               height: 10
             });
           }
-          // Full heal on boss death
           player.health = player.maxHealth;
           boss = null;
+          bossAoeState = "idle";
+          bossChargeState = "idle";
           roomIsCleared = true;
         }
       }
@@ -391,10 +554,10 @@ function update() {
       if (keys["a"] || keys["ArrowLeft"])  player.facing = "left";
       if (keys["d"] || keys["ArrowRight"]) player.facing = "right";
 
-      // [attack input]
+      // [attack input] [attack speed] [attack cooldown]
       if ((keys[" "] || keys["click"]) && player.attackCooldown <= 0) {
-        player.attackTimer = 20;
-        player.attackCooldown = 30;
+        player.attackTimer = 8;       // [attack duration]
+        player.attackCooldown = 25;   // [attack cooldown]
         player.attackHits = [];
       }
 
@@ -457,7 +620,7 @@ function update() {
         }
       }
 
-      // [room clear check] only for non boss rooms
+      // [room clear check]
       if (!isBossRoom && enemies.length === 0 && !roomIsCleared) {
         roomIsCleared = true;
       }
@@ -523,13 +686,57 @@ function render() {
 
   // [draw boss]
   if (boss) {
+    const isEnraged = boss.health <= boss.maxHealth * 0.25;
+
     ctx.fillStyle = boss.color;
     ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
 
-    // Boss glow effect
-    ctx.strokeStyle = "#ff0000";
-    ctx.lineWidth = 3;
+    // Boss border
+    ctx.strokeStyle = isEnraged ? "#ffff00" : "#ff0000";
+    ctx.lineWidth = isEnraged ? 5 : 3;
     ctx.strokeRect(boss.x, boss.y, boss.width, boss.height);
+
+    // [telegraph outline] flashing red box at target location
+    if (bossChargeState === "telegraphing") {
+      const flashOn = Math.floor(bossTelegraphFlash / 3) % 2 === 0;
+      if (flashOn) {
+        ctx.fillStyle = "rgba(255, 0, 0, 0.25)";
+        ctx.fillRect(bossChargeTargetX - 30, bossChargeTargetY - 30, player.width + 60, player.height + 60);
+        ctx.strokeStyle = "rgba(255, 0, 0, 0.9)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(bossChargeTargetX - 30, bossChargeTargetY - 30, player.width + 60, player.height + 60);
+      }
+    }
+
+    // [draw aoe ring]
+    if (bossAoeState === "expanding" && bossAoeCenterX && bossAoeCenterY) {
+      const alpha = Math.max(0, 1 - (bossAoeRadius / bossAoeMaxRadius));
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(bossAoeCenterX, bossAoeCenterY, Math.max(1, bossAoeRadius), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 80, 0, ${alpha})`;
+      ctx.lineWidth = 8;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(bossAoeCenterX, bossAoeCenterY, Math.max(1, bossAoeRadius - 6), 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255, 200, 0, ${alpha * 0.5})`;
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // DEBUG: show attack info
+    const pdx = player.x + player.width / 2 - (boss.x + boss.width / 2);
+    const pdy = player.y + player.height / 2 - (boss.y + boss.height / 2);
+    const distToPlayer = Math.sqrt(pdx * pdx + pdy * pdy);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "14px Arial";
+    ctx.fillText("Boss dist: " + Math.floor(distToPlayer), 20, canvas.height - 120);
+    ctx.fillText("Charge state: " + bossChargeState, 20, canvas.height - 100);
+    ctx.fillText("AOE state: " + bossAoeState, 20, canvas.height - 80);
+    ctx.fillText("Cooldown: " + bossChargeCooldown, 20, canvas.height - 60);
   }
 
   // [draw coins]
@@ -569,38 +776,48 @@ function render() {
   ctx.font = "bold 16px Courier New";
   ctx.fillText("Coins: " + coinCount, 20, barY + barH + 50);
 
-  // [draw boss health bar] — bottom center above door
+  // [draw stats display] top right
+  const dmgPct = Math.round(((player.damage - playerBase.damage) / playerBase.damage) * 100);
+  const hpPct  = Math.round(((player.maxHealth - playerBase.maxHealth) / playerBase.maxHealth) * 100);
+  const spdPct = Math.round(((player.speed - playerBase.speed) / playerBase.speed) * 100);
+
+  const statsX = canvas.width - 220;
+  const statsY = 20;
+
+  ctx.font = "bold 15px Courier New";
+  ctx.fillStyle = "#ff6644";
+  ctx.fillText("ATK: " + player.damage + (dmgPct > 0 ? " (+" + dmgPct + "%)" : ""), statsX, statsY + 20);
+  ctx.fillStyle = "#4488ff";
+  ctx.fillText("HP:  " + player.maxHealth + (hpPct > 0 ? " (+" + hpPct + "%)" : ""), statsX, statsY + 45);
+  ctx.fillStyle = "#00ff88";
+  ctx.fillText("SPD: " + player.speed.toFixed(1) + (spdPct > 0 ? " (+" + spdPct + "%)" : ""), statsX, statsY + 70);
+
+  // [draw boss health bar] bottom center
   if (boss) {
     const bBarW = 400;
     const bBarH = 30;
     const bBarX = canvas.width / 2 - bBarW / 2;
     const bBarY = canvas.height - 80;
 
-    // Background
     ctx.fillStyle = "#1a0000";
     ctx.fillRect(bBarX, bBarY, bBarW, bBarH);
 
-    // Health fill — turns orange at 50%, yellow at 25%
     const bossHpRatio = boss.health / boss.maxHealth;
-    if (bossHpRatio > 0.5) {
-      ctx.fillStyle = "#cc0000";
-    } else if (bossHpRatio > 0.25) {
-      ctx.fillStyle = "#cc6600";
-    } else {
-      ctx.fillStyle = "#cccc00";
-    }
+    ctx.fillStyle = bossHpRatio > 0.5 ? "#cc0000" : bossHpRatio > 0.25 ? "#cc6600" : "#ffff00";
     ctx.fillRect(bBarX, bBarY, bBarW * bossHpRatio, bBarH);
 
-    // Border
-    ctx.strokeStyle = "#ff0000";
+    ctx.strokeStyle = bossHpRatio <= 0.25 ? "#ffff00" : "#ff0000";
     ctx.lineWidth = 2;
     ctx.strokeRect(bBarX, bBarY, bBarW, bBarH);
 
-    // Boss label
     ctx.fillStyle = "#FFFFFF";
     ctx.font = "bold 14px Courier New";
     ctx.textAlign = "center";
-    ctx.fillText("BOSS  " + Math.ceil(boss.health) + " / " + boss.maxHealth, canvas.width / 2, bBarY + bBarH - 8);
+    ctx.fillText(
+      (bossHpRatio <= 0.25 ? "⚠ ENRAGED ⚠  " : "BOSS  ") +
+      Math.ceil(boss.health) + " / " + boss.maxHealth,
+      canvas.width / 2, bBarY + bBarH - 8
+    );
     ctx.textAlign = "left";
   }
 
@@ -638,7 +855,7 @@ function render() {
     ctx.textAlign = "left";
   }
 
-  // [draw shop UI] — always on top
+  // [draw shop UI] always on top
   if (shopOpen) {
     const prices = getShopPrices();
     const panelX = canvas.width / 2 - 220;
@@ -702,7 +919,7 @@ function render() {
     ctx.textAlign = "left";
   }
 
-  // [draw fade overlay] — always last
+  // [draw fade overlay] always last
   if (fadeAlpha > 0) {
     ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
