@@ -16,6 +16,13 @@ roomBackground.src = "RoomImages/DungeonRoom1.png";
 const roomCleared = new Image();
 roomCleared.src = "RoomImages/ClearedDungeonRoom1.png";
 
+// Health bar UI images
+const healthBarEmpty = new Image();
+healthBarEmpty.src = "UserInterface/EmptyHealthBar.png";
+
+const healthBarFull = new Image();
+healthBarFull.src = "UserInterface/FullHealthBar.png";
+
 // ============================================================
 // PLAYER OBJECT
 // ============================================================
@@ -25,14 +32,14 @@ const player = {
   width: 50,
   height: 50,
   speed: 4,
-  color: "blue",
+  color: "slategray",
   health: 100, // player health
   maxHealth: 100,
   facing: "right",
   attackTimer: 0,
   attackCooldown: 0,
   attackHits: [],
-  damage: 25 // player damage
+  damage: 2500 // player damage
 };
 
 // ============================================================
@@ -67,9 +74,9 @@ function spawnEnemies() {
       y: ey,
       width: 40,
       height: 40,
-      speed: 1.5, //enemy speed
+      speed: 2, //enemy speed
       color: "crimson",
-      health: 50 //enemy health
+      health: 60 //enemy health
     });
   }
 }
@@ -221,15 +228,30 @@ function render() {
   });
 
   // --- Draw Health Bar ---
-  ctx.fillStyle = "red";
-  ctx.fillRect(10, 10, 200, 20);
-  ctx.fillStyle = "#24C72F";
-  ctx.fillRect(10, 10, 200 * (player.health / player.maxHealth), 20);
+  const barX = 20;
+  const barY = 20;
+  const barW = 250;
+  const barH = 28;
 
-  // --- Draw Health Text ---
+  // Dark background
+  ctx.fillStyle = "#1a0000";
+  ctx.fillRect(barX, barY, barW, barH);
+
+  // Red health fill
+  ctx.fillStyle = "#cc0000";
+  ctx.fillRect(barX, barY, barW * (player.health / player.maxHealth), barH);
+
+  // Border around bar
+  ctx.strokeStyle = "#888";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(barX, barY, barW, barH);
+
+  // Health text centered on bar
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "20px bold Courier New";
-  ctx.fillText("HP: " + Math.ceil(player.health) + " / " + player.maxHealth, 10, 50);
+  ctx.font = "bold 14px Courier New";
+  ctx.textAlign = "center";
+  ctx.fillText(Math.ceil(player.health) + " / " + player.maxHealth, barX + barW / 2, barY + barH - 8);
+  ctx.textAlign = "left";
 
   // --- Draw Attack Hitbox (yellow flash) ---
   if (player.attackTimer > 0) {
@@ -268,7 +290,9 @@ function gameLoop() {
 // Wait for both images to load before starting
 Promise.all([
   new Promise(res => roomBackground.onload = res),
-  new Promise(res => roomCleared.onload = res)
+  new Promise(res => roomCleared.onload = res),
+  new Promise(res => healthBarEmpty.onload = res),
+  new Promise(res => healthBarFull.onload = res)
 ]).then(() => {
   gameLoop();
 });
