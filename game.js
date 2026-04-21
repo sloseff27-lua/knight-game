@@ -59,13 +59,15 @@ let isShopRoom = false;
 let isBossRoom = false;
 let shopOpen = false;
 let shopHealMessage = "";
+// [projectiles]
+const projectiles = [];
 
 // ============================================================
 // PLAYER BASE STATS
 // ============================================================
 // [player base stats]
 const playerBase = {
-  damage: 50,
+  damage: 25,
   maxHealth: 100,
   speed: 4
 };
@@ -154,6 +156,7 @@ function getChargeCooldown() {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// [boss config]
 function createBoss() {
   return {
     x: canvas.width / 2 - 60,
@@ -163,8 +166,9 @@ function createBoss() {
     speed: 0.8,
     baseSpeed: 0.8,
     color: "#8B0000",
-    health: 300 + (roomNumber * 20),
-    maxHealth: 300 + (roomNumber * 20),
+    // [boss health]
+    health: Math.floor(300 * Math.pow(2.8, roomNumber / 10)),
+    maxHealth: Math.floor(300 * Math.pow(2.8, roomNumber / 10)),  
     damage: 1.5,
     coinDrop: 20 + roomNumber
   };
@@ -209,17 +213,33 @@ function spawnEnemies() {
   if (isShopRoom || isBossRoom) return;
 
   const minDistFromPlayer = 200;
+  const totalCap = 10;
 
-  // [enemy count] capped at 13
-  const enemyCount = Math.min(3 + roomNumber, 13);
-  // [enemy speed]
-  const enemySpeed = 1.5 + (roomNumber * 0.1);
-  // [enemy health]
+  const enemySpeed  = 1.5 + (roomNumber * 0.1);
   const enemyHealth = 15 + (roomNumber * 10);
 
-  for (let i = 0; i < enemyCount; i++) {
-    let ex, ey, attempts = 0;
+  // [enemy counts per type]
+  const commonCount = Math.min(3 + Math.floor(roomNumber * 0.5), 5);
+  const tankCount   = Math.min(Math.floor(roomNumber / 3), 2);
+  const speederCount= Math.min(Math.floor(roomNumber / 2), 2);
+  const rangedCount = Math.min(Math.floor(roomNumber / 4), 3);
 
+  const spawnList = [];
+
+  // common
+  for (let i = 0; i < commonCount; i++) spawnList.push("common");
+  // tank
+  for (let i = 0; i < tankCount; i++)   spawnList.push("tank");
+  // speeder
+  for (let i = 0; i < speederCount; i++) spawnList.push("speeder");
+  // ranged
+  for (let i = 0; i < rangedCount; i++) spawnList.push("ranged");
+
+  // cap total
+  const finalList = spawnList.slice(0, totalCap);
+
+  finalList.forEach(type => {
+    let ex, ey, attempts = 0;
     do {
       ex = Math.random() * (canvas.width - 550) + 275;
       ey = Math.random() * (canvas.height - 340) + 180;
@@ -229,19 +249,46 @@ function spawnEnemies() {
       && attempts < 20
     );
 
-    enemies.push({
-      x: ex,
-      y: ey,
-      width: 40,
-      height: 40,
-      speed: enemySpeed,
-      color: "crimson",
-      health: enemyHealth
-    });
-  }
+    if (type === "common") {
+      enemies.push({
+        x: ex, y: ey, width: 40, height: 40,
+        speed: enemySpeed,
+        color: "crimson",
+        health: enemyHealth,
+        type: "common"
+      });
+    // [tank config]
+    } else if (type === "tank") {
+      enemies.push({
+        x: ex, y: ey, width: 55, height: 55,
+        speed: enemySpeed * 0.5,
+        color: "#8B0000",
+        health: enemyHealth * 3,
+        type: "tank"
+      });
+    // [speeder config]
+    } else if (type === "speeder") {
+      enemies.push({
+        x: ex, y: ey, width: 25, height: 25,
+        speed: enemySpeed * 2,
+        color: "#ff8800",
+        health: enemyHealth * 0.3,
+        type: "speeder"
+      });
+    // [ranged config]
+    } else if (type === "ranged") {
+      enemies.push({
+        x: ex, y: ey, width: 35, height: 35,
+        speed: enemySpeed * 0.8,
+        color: "#66ccff",
+        health: enemyHealth * 0.9,
+        type: "ranged",
+        shootTimer: 0,
+        shootCooldown: 120  // [ranged shoot cooldown] 2 seconds
+      });
+    }
+  });
 }
-
-spawnEnemies();
 
 // ============================================================
 // DOOR DETECTION ZONE
@@ -310,8 +357,8 @@ function restartGame() {
   player.y = canvas.height / 1.35;
   player.health = 100;
   player.maxHealth = 100;
-  player.damage = 25;
-  player.speed = 4;
+  player.damage = 25; //[player damage]
+  player.speed = 4; //[player speed]
   player.attackTimer = 0;
   player.attackCooldown = 0;
   player.attackHits = [];
@@ -338,6 +385,7 @@ function restartGame() {
 
   enemies.length = 0;
   coins.length = 0;
+  projectiles.length = 0;
   spawnEnemies();
 
   gameState = "playing";
@@ -368,7 +416,7 @@ window.addEventListener("mouseup", (e) => {
 // [menu + restart handler]
 window.addEventListener("keydown", (e) => {
   if (gameState === "menu") {
-    gameState = "playing";
+    restartGame();
   } else if (gameState === "dead" && deathScreenTimer <= 0) {
     restartGame();
   }
@@ -379,26 +427,26 @@ window.addEventListener("keydown", (e) => {
   if (!shopOpen) return;
   const prices = getShopPrices();
 
-  // [shop multiplier damage]
+  // [damage multiplier]
   if (e.key === "1") {
     if (coinCount >= prices.damagePrice) {
       coinCount -= prices.damagePrice;
-      player.damage = Math.floor(player.damage * 1.5);
+      player.damage = Math.floor(player.damage * 1.25);
     }
   }
-  // [shop multiplier health]
+  // [health multiplier]
   if (e.key === "2") {
     if (coinCount >= prices.healthPrice) {
       coinCount -= prices.healthPrice;
-      player.maxHealth = Math.floor(player.maxHealth * 1.5);
+      player.maxHealth = Math.floor(player.maxHealth * 1.25);
       player.health = Math.min(player.health + player.maxHealth * 0.1, player.maxHealth);
     }
   }
-  // [shop multiplier speed]
+  // [speed multiplier]
   if (e.key === "3") {
     if (coinCount >= prices.speedPrice) {
       coinCount -= prices.speedPrice;
-      player.speed = Math.min(parseFloat((player.speed * 1.3).toFixed(2)), player.maxSpeed);
+      player.speed = Math.min(parseFloat((player.speed * 1.25).toFixed(2)), player.maxSpeed);
     }
   }
 });
@@ -444,17 +492,54 @@ function update() {
 
     if (!isShopRoom) {
 
-      // [enemy movement]
-      enemies.forEach(enemy => {
-        const dx = player.x - enemy.x;
-        const dy = player.y - enemy.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        enemy.x += (dx / dist) * enemy.speed;
-        enemy.y += (dy / dist) * enemy.speed;
+// [enemy movement]
+enemies.forEach(enemy => {
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (enemy.type === "ranged") {
+    // [ranged movement] tries to stay 300px from player
+    const preferredDist = 300;
+    if (dist > preferredDist + 40) {
+      // too far — move closer
+      enemy.x += (dx / dist) * enemy.speed;
+      enemy.y += (dy / dist) * enemy.speed;
+    } else if (dist < preferredDist - 40) {
+      // too close — back away
+      enemy.x -= (dx / dist) * enemy.speed;
+      enemy.y -= (dy / dist) * enemy.speed;
+
+      // [ranged wall bounds] keep inside room
+      enemy.x = Math.max(260, Math.min(canvas.width - enemy.width - 260, enemy.x));
+      enemy.y = Math.max(170, Math.min(canvas.height - enemy.height - 140, enemy.y));
+    }
+    // in the sweet spot — stand still
+
+    // [ranged shoot]
+    enemy.shootTimer--;
+    if (enemy.shootTimer <= 0) {
+      enemy.shootTimer = enemy.shootCooldown;
+      const speed = 4;
+      projectiles.push({
+        x: enemy.x + enemy.width / 2,
+        y: enemy.y + enemy.height / 2,
+        vx: (dx / dist) * speed,
+        vy: (dy / dist) * speed,
+        width: 10,
+        height: 10
       });
+    }
+  } else {
+    // [common, tank, speeder] — chase player
+    enemy.x += (dx / dist) * enemy.speed;
+    enemy.y += (dy / dist) * enemy.speed;
+  }
+});
 
       // [enemy damage to player]
       enemies.forEach(enemy => {
+        if (enemy.type === "ranged") return; // ranged don't deal contact damage
         if (rectsOverlap(player, enemy)) {
           const dx = enemy.x - player.x;
           const dy = enemy.y - player.y;
@@ -462,10 +547,38 @@ function update() {
           const pushForce = enemy.speed + 3;
           enemy.x += (dx / dist) * pushForce;
           enemy.y += (dy / dist) * pushForce;
-          const rawDamage = 0.3 + (roomNumber * 0.02);
-          player.health -= Math.min(rawDamage, 0.7);
+          // [enemy contact damage by type]
+          let rawDamage;
+          if (enemy.type === "tank") {
+            rawDamage = 1.5 + (roomNumber * 0.2);   // [tank damage]
+          } else if (enemy.type === "speeder") {
+            rawDamage = 0.2 + (roomNumber * 0.05);  // [speeder damage]
+          } else {
+            rawDamage = 0.5 + (roomNumber * 0.1);  // [common damage]
+          }
+          player.health -= rawDamage;
         }
       });
+
+      // [projectile movement + player hit]
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+
+        // remove if off screen
+        if (p.x < 0 || p.x > canvas.width || p.y < 0 || p.y > canvas.height) {
+          projectiles.splice(i, 1);
+          continue;
+        }
+
+        // [projectile hits player]
+        if (rectsOverlap(p, player)) {
+          const rawDamage = 10 + (roomNumber * 0.5);  // [ranged damage]
+          player.health -= rawDamage;
+          projectiles.splice(i, 1);
+        }
+      }
 
       // --------------------------------------------------------
       // BOSS LOGIC
@@ -680,12 +793,17 @@ function update() {
         // [enemy removal + coin drop]
         for (let i = enemies.length - 1; i >= 0; i--) {
           if (enemies[i].health <= 0) {
-            coins.push({
-              x: enemies[i].x + enemies[i].width / 2 - 5,
-              y: enemies[i].y + enemies[i].height / 2 - 5,
-              width: 10,
-              height: 10
-            });
+            const dropCount = enemies[i].type === "tank" ? 3
+                            : enemies[i].type === "ranged" ? 2
+                            : 1;
+            for (let c = 0; c < dropCount; c++) {
+              coins.push({
+                x: enemies[i].x + Math.random() * enemies[i].width,
+                y: enemies[i].y + Math.random() * enemies[i].height,
+                width: 10,
+                height: 10
+              });
+            }
             enemies.splice(i, 1);
           }
         }
@@ -845,6 +963,14 @@ function render() {
     ctx.fillRect(coin.x, coin.y, coin.width, coin.height);
   });
 
+  // [draw projectiles]
+  ctx.fillStyle = "#66ccff";
+  projectiles.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
   // [draw health bar]
   const barX = 20;
   const barY = 20;
@@ -972,22 +1098,26 @@ function render() {
     ctx.font = "bold 16px Courier New";
     ctx.fillText("Coins: " + coinCount, canvas.width / 2, panelY + 130);
 
+    // UI Multiplier Damage
     const canAffordDamage = coinCount >= prices.damagePrice;
     ctx.fillStyle = canAffordDamage ? "#ff6644" : "#666666";
     ctx.font = "bold 16px Courier New";
-    ctx.fillText("[1] +50% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 190);
+    ctx.fillText("[1] +25% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 190);
 
+    // UI Multiplier Health
     const canAffordHealth = coinCount >= prices.healthPrice;
     ctx.fillStyle = canAffordHealth ? "#4488ff" : "#666666";
-    ctx.fillText("[2] +50% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 250);
+    ctx.fillText("[2] +25% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 250);
 
+    // UI Multiplier Speed
     const canAffordSpeed = coinCount >= prices.speedPrice;
     const speedCapped = player.speed >= player.maxSpeed;
     ctx.fillStyle = canAffordSpeed && !speedCapped ? "#00ff88" : "#666666";
     ctx.fillText(
-      speedCapped ? "[3] Speed MAX" : "[3] +30% Speed — " + prices.speedPrice + " coins",
-      canvas.width / 2, panelY + 310
+        speedCapped ? "[3] Speed MAX" : "[3] +25% Speed — " + prices.speedPrice + " coins",
+        canvas.width / 2, panelY + 310
     );
+
 
     ctx.fillStyle = "#aaffaa";
     ctx.font = "14px Courier New";
