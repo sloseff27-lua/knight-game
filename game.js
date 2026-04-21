@@ -36,11 +36,19 @@ shopImage.src = "UserInterface/MerchantTable.png";
 const deathScreen = new Image();
 deathScreen.src = "UserInterface/DeathScreen.png";
 
+// [menu screen image]
+const menuScreen = new Image();
+menuScreen.src = "UserInterface/MenuScreen.png";
+
+// [shop panel image]
+const shopPanel = new Image();
+shopPanel.src = "UserInterface/ShopPane.png";
+
 // ============================================================
 // GAME STATE
 // ============================================================
 // [game state vars]
-let gameState = "playing"; // [game state] "playing" | "dead"
+let gameState = "menu"; // [game state] "menu" | "playing" | "dead"
 let deathScreenTimer = 0;  // [death screen cooldown] blocks restart input
 let roomNumber = 1;
 let roomIsCleared = false;
@@ -80,7 +88,7 @@ const player = {
   attackTimer: 0,
   attackCooldown: 0,
   attackHits: [],
-  damage: 50               // [player damage]
+  damage: 25                // [player damage]
 };
 
 // ============================================================
@@ -207,7 +215,7 @@ function spawnEnemies() {
   // [enemy speed]
   const enemySpeed = 1.5 + (roomNumber * 0.1);
   // [enemy health]
-  const enemyHealth = 30 + (roomNumber * 10);
+  const enemyHealth = 15 + (roomNumber * 10);
 
   for (let i = 0; i < enemyCount; i++) {
     let ex, ey, attempts = 0;
@@ -265,10 +273,9 @@ function advanceRoom() {
   bossAoeDamageDealt = false;
   bossChargeDamageDealt = false;
 
-  // Detect room type — change % 1 back to % 10 before submitting
   // [boss frequency] [shop frequency]
   isBossRoom = (roomNumber % 10 === 0);
-  isShopRoom = (roomNumber % 5 === 0) && !isBossRoom;
+  isShopRoom = (roomNumber % 1 === 0) && !isBossRoom;
 
   // [auto heal on shop entry]
   if (isShopRoom) {
@@ -281,7 +288,7 @@ function advanceRoom() {
   // [spawn boss on boss room entry]
   if (isBossRoom) {
     boss = createBoss();
-    bossChargeCooldown = 60;   // [boss initial attack delay] 3 seconds
+    bossChargeCooldown = 60;
   }
 
   // Reset player position
@@ -299,18 +306,16 @@ function advanceRoom() {
 // ============================================================
 // [restart game]
 function restartGame() {
-  // Reset player
   player.x = canvas.width / 2.08;
   player.y = canvas.height / 1.35;
   player.health = 100;
   player.maxHealth = 100;
-  player.damage = 50;
+  player.damage = 25;
   player.speed = 4;
   player.attackTimer = 0;
   player.attackCooldown = 0;
   player.attackHits = [];
 
-  // Reset world
   roomNumber = 1;
   roomIsCleared = false;
   isShopRoom = false;
@@ -360,9 +365,11 @@ window.addEventListener("mouseup", (e) => {
   if (e.button === 0) keys["click"] = false;
 });
 
-// [restart handler] any key restarts after cooldown
+// [menu + restart handler]
 window.addEventListener("keydown", (e) => {
-  if (gameState === "dead" && deathScreenTimer <= 0) {
+  if (gameState === "menu") {
+    gameState = "playing";
+  } else if (gameState === "dead" && deathScreenTimer <= 0) {
     restartGame();
   }
 });
@@ -413,6 +420,9 @@ function rectsOverlap(a, b) {
 // UPDATE LOOP
 // ============================================================
 function update() {
+
+  // [menu gate]
+  if (gameState === "menu") return;
 
   // [death gate] freeze all logic when dead
   if (gameState === "dead") {
@@ -471,18 +481,14 @@ function update() {
         }
 
         // ---- ATTACK DECISION ----
-        // [boss attack decision] one timer controls both attacks
         if (bossChargeState === "idle" && bossAoeState === "idle") {
           bossChargeCooldown--;
           if (bossChargeCooldown <= 0) {
-
-            // measure distance from boss center to player center
             const pdx = player.x + player.width / 2 - (boss.x + boss.width / 2);
             const pdy = player.y + player.height / 2 - (boss.y + boss.height / 2);
             const distToPlayer = Math.sqrt(pdx * pdx + pdy * pdy);
 
             if (distToPlayer < 200) {
-              // [player close] — trigger AOE
               bossAoeState = "expanding";
               bossAoeRadius = 0;
               bossAoeCenterX = boss.x + boss.width / 2;
@@ -490,11 +496,9 @@ function update() {
               bossAoeDamageDealt = false;
               bossChargeCooldown = getChargeCooldown();
             } else {
-              // [player far] — trigger dash
               bossChargeTargetX = player.x;
               bossChargeTargetY = player.y;
               bossChargeState = "telegraphing";
-              // [dash windup]
               bossChargeTimer = 28;
               bossTelegraphFlash = 0;
               bossChargeDamageDealt = false;
@@ -518,10 +522,9 @@ function update() {
           const dx = bossChargeTargetX - boss.x;
           const dy = bossChargeTargetY - boss.y;
           const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          boss.x += (dx / dist) * 60;       // [dash speed]
+          boss.x += (dx / dist) * 60;
           boss.y += (dy / dist) * 60;
 
-          // [dash damage] one tick 40% of current HP
           if (!bossChargeDamageDealt && rectsOverlap(player, boss)) {
             player.health -= player.maxHealth * 0.4;
             bossChargeDamageDealt = true;
@@ -544,7 +547,7 @@ function update() {
 
         // ---- AOE STATES ----
         if (bossAoeState === "expanding") {
-          bossAoeRadius += 4;               // [aoe expansion speed]
+          bossAoeRadius += 4;
 
           if (!bossAoeDamageDealt) {
             const px = player.x + player.width / 2;
@@ -554,7 +557,7 @@ function update() {
               (py - bossAoeCenterY) ** 2
             );
             if (bossAoeRadius >= distToCenter - 20 && bossAoeRadius <= distToCenter + 20) {
-              player.health -= player.maxHealth * 0.25;  // [aoe damage] 25% current HP
+              player.health -= player.maxHealth * 0.25;
               bossAoeDamageDealt = true;
             }
           }
@@ -566,7 +569,7 @@ function update() {
           }
         }
 
-        // [boss normal movement] only when not in special attack
+        // [boss normal movement]
         if (bossChargeState === "idle" || bossChargeState === "cooldown") {
           if (bossAoeState === "idle") {
             const dx = player.x - boss.x;
@@ -577,7 +580,7 @@ function update() {
           }
         }
 
-        // [boss contact damage] only when not dashing
+        // [boss contact damage]
         if (bossChargeState !== "dashing" && rectsOverlap(player, boss)) {
           const dx = boss.x - player.x;
           const dy = boss.y - player.y;
@@ -619,16 +622,15 @@ function update() {
 
       // [health clamp]
       if (DEV_IMMORTAL) {
-        player.health = Math.max(1, player.health); // never reaches 0
+        player.health = Math.max(1, player.health);
       } else {
         player.health = Math.max(0, player.health);
-      }
-
-      // [death check]
-      if (player.health <= 0) {
-        gameState = "dead";
-        deathScreenTimer = 120; // [death cooldown] 2 seconds at 60fps
-        return;
+        // [death check]
+        if (player.health <= 0) {
+          gameState = "dead";
+          deathScreenTimer = 120;
+          return;
+        }
       }
 
       // [player facing]
@@ -637,10 +639,10 @@ function update() {
       if (keys["a"] || keys["ArrowLeft"])  player.facing = "left";
       if (keys["d"] || keys["ArrowRight"]) player.facing = "right";
 
-      // [attack input] [attack speed] [attack cooldown]
+      // [attack input]
       if ((keys[" "] || keys["click"]) && player.attackCooldown <= 0) {
-        player.attackTimer = 8;       // [attack duration]
-        player.attackCooldown = 25;   // [attack cooldown]
+        player.attackTimer = 8;
+        player.attackCooldown = 25;
         player.attackHits = [];
       }
 
@@ -750,6 +752,22 @@ function update() {
 // ============================================================
 function render() {
 
+  // [draw menu screen] — first so return skips everything else
+  if (gameState === "menu") {
+    ctx.drawImage(menuScreen, 0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+
+    const pulse = 0.6 + Math.sin(Date.now() / 500) * 0.4;
+    ctx.textAlign = "center";
+    ctx.fillStyle = `rgba(255, 220, 100, ${pulse})`;
+    ctx.font = "bold 26px Courier New";
+    ctx.fillText("Press any key to Play", canvas.width / 2, canvas.height - 30);
+    ctx.textAlign = "left";
+    return;
+  }
+
   // [draw background]
   if (roomIsCleared) {
     ctx.drawImage(roomCleared, 0, 0, canvas.width, canvas.height);
@@ -774,12 +792,11 @@ function render() {
     ctx.fillStyle = boss.color;
     ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
 
-    // Boss border
     ctx.strokeStyle = isEnraged ? "#ffff00" : "#ff0000";
     ctx.lineWidth = isEnraged ? 5 : 3;
     ctx.strokeRect(boss.x, boss.y, boss.width, boss.height);
 
-    // [telegraph outline] flashing red box at target location
+    // [telegraph outline]
     if (bossChargeState === "telegraphing") {
       const flashOn = Math.floor(bossTelegraphFlash / 3) % 2 === 0;
       if (flashOn) {
@@ -941,65 +958,45 @@ function render() {
   // [draw shop UI] always on top
   if (shopOpen) {
     const prices = getShopPrices();
-    const panelX = canvas.width / 2 - 220;
-    const panelY = canvas.height / 2 - 200;
-    const panelW = 440;
-    const panelH = 320;
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.88)";
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = "#FFD700";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(panelX, panelY, panelW, panelH);
+    const panelW = 420;
+    const panelH = 520;
+    const panelX = canvas.width / 2 - panelW / 2;
+    const panelY = canvas.height / 2 - panelH / 2;
+
+    ctx.drawImage(shopPanel, panelX, panelY, panelW, panelH);
+
+    ctx.textAlign = "center";
 
     ctx.fillStyle = "#FFD700";
-    ctx.font = "bold 24px Courier New";
-    ctx.textAlign = "center";
-    ctx.fillText("SHOP", canvas.width / 2, panelY + 38);
+    ctx.font = "bold 16px Courier New";
+    ctx.fillText("Coins: " + coinCount, canvas.width / 2, panelY + 130);
 
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = "14px Courier New";
-    ctx.fillText("Coins: " + coinCount, canvas.width / 2, panelY + 62);
-
-    ctx.strokeStyle = "#444";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(panelX + 20, panelY + 72);
-    ctx.lineTo(panelX + panelW - 20, panelY + 72);
-    ctx.stroke();
-
-    // [shop multiplier UI]
     const canAffordDamage = coinCount >= prices.damagePrice;
     ctx.fillStyle = canAffordDamage ? "#ff6644" : "#666666";
     ctx.font = "bold 16px Courier New";
-    ctx.fillText("[1] +50% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 108);
+    ctx.fillText("[1] +50% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 190);
 
     const canAffordHealth = coinCount >= prices.healthPrice;
     ctx.fillStyle = canAffordHealth ? "#4488ff" : "#666666";
-    ctx.fillText("[2] +50% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 150);
+    ctx.fillText("[2] +50% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 250);
 
     const canAffordSpeed = coinCount >= prices.speedPrice;
     const speedCapped = player.speed >= player.maxSpeed;
     ctx.fillStyle = canAffordSpeed && !speedCapped ? "#00ff88" : "#666666";
     ctx.fillText(
       speedCapped ? "[3] Speed MAX" : "[3] +30% Speed — " + prices.speedPrice + " coins",
-      canvas.width / 2, panelY + 192
+      canvas.width / 2, panelY + 310
     );
-
-    ctx.strokeStyle = "#444";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(panelX + 20, panelY + 210);
-    ctx.lineTo(panelX + panelW - 20, panelY + 210);
-    ctx.stroke();
 
     ctx.fillStyle = "#aaffaa";
     ctx.font = "14px Courier New";
-    ctx.fillText(shopHealMessage, canvas.width / 2, panelY + 240);
+    ctx.fillText(shopHealMessage, canvas.width / 2, panelY + 390);
 
     ctx.fillStyle = "#888888";
     ctx.font = "13px Courier New";
-    ctx.fillText("Press 1, 2 or 3 to buy. Walk away to close.", canvas.width / 2, panelY + 290);
+    ctx.fillText("Press 1, 2 or 3 to buy. Walk away to close.", canvas.width / 2, panelY + 460);
+
     ctx.textAlign = "left";
   }
 
@@ -1007,16 +1004,20 @@ function render() {
   if (gameState === "dead") {
     ctx.drawImage(deathScreen, 0, 0, canvas.width, canvas.height);
 
-    ctx.textAlign = "center";
-
     ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
     ctx.fillRect(0, canvas.height - 70, canvas.width, 70);
 
+    ctx.textAlign = "center";
     ctx.fillStyle = "#888888";
     ctx.font = "18px Courier New";
     ctx.fillText("Reached Room " + roomNumber + "   |   Press any key to Restart", canvas.width / 2, canvas.height - 28);
-
     ctx.textAlign = "left";
+  }
+
+  // [draw fade overlay] always last
+  if (fadeAlpha > 0) {
+    ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 }
 
@@ -1036,7 +1037,9 @@ Promise.all([
   new Promise(res => healthBarEmpty.onload = res),
   new Promise(res => healthBarFull.onload = res),
   new Promise(res => shopImage.onload = res),
-  new Promise(res => deathScreen.onload = res)
+  new Promise(res => deathScreen.onload = res),
+  new Promise(res => menuScreen.onload = res),
+  new Promise(res => shopPanel.onload = res)
 ]).then(() => {
   gameLoop();
 });
