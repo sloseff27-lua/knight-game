@@ -42,7 +42,7 @@ menuScreen.src = "UserInterface/MenuScreen.png";
 
 // [shop panel image]
 const shopPanel = new Image();
-shopPanel.src = "UserInterface/ShopPane.png";
+shopPanel.src = "UserInterface/ShopPanel.png";
 
 // ============================================================
 // GAME STATE
@@ -275,7 +275,7 @@ function advanceRoom() {
 
   // [boss frequency] [shop frequency]
   isBossRoom = (roomNumber % 10 === 0);
-  isShopRoom = (roomNumber % 1 === 0) && !isBossRoom;
+  isShopRoom = (roomNumber % 5 === 0) && !isBossRoom;
 
   // [auto heal on shop entry]
   if (isShopRoom) {
