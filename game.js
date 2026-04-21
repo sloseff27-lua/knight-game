@@ -8,6 +8,12 @@ canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 // ============================================================
+// DEV FLAGS
+// ============================================================
+// [dev] set to true to disable death during testing
+const DEV_IMMORTAL = false;
+
+// ============================================================
 // ASSETS — load images
 // ============================================================
 const roomBackground = new Image();
@@ -26,10 +32,16 @@ healthBarFull.src = "UserInterface/FullHealthBar.png";
 const shopImage = new Image();
 shopImage.src = "UserInterface/MerchantTable.png";
 
+// [death screen image]
+const deathScreen = new Image();
+deathScreen.src = "UserInterface/DeathScreen.png";
+
 // ============================================================
 // GAME STATE
 // ============================================================
 // [game state vars]
+let gameState = "playing"; // [game state] "playing" | "dead"
+let deathScreenTimer = 0;  // [death screen cooldown] blocks restart input
 let roomNumber = 1;
 let roomIsCleared = false;
 let fadeAlpha = 0;
@@ -45,7 +57,7 @@ let shopHealMessage = "";
 // ============================================================
 // [player base stats]
 const playerBase = {
-  damage: 25,
+  damage: 50,
   maxHealth: 100,
   speed: 4
 };
@@ -68,7 +80,7 @@ const player = {
   attackTimer: 0,
   attackCooldown: 0,
   attackHits: [],
-  damage: 25                // [player damage]
+  damage: 50               // [player damage]
 };
 
 // ============================================================
@@ -283,6 +295,50 @@ function advanceRoom() {
 }
 
 // ============================================================
+// RESTART
+// ============================================================
+// [restart game]
+function restartGame() {
+  // Reset player
+  player.x = canvas.width / 2.08;
+  player.y = canvas.height / 1.35;
+  player.health = 100;
+  player.maxHealth = 100;
+  player.damage = 50;
+  player.speed = 4;
+  player.attackTimer = 0;
+  player.attackCooldown = 0;
+  player.attackHits = [];
+
+  // Reset world
+  roomNumber = 1;
+  roomIsCleared = false;
+  isShopRoom = false;
+  isBossRoom = false;
+  shopOpen = false;
+  shopHealMessage = "";
+  coinCount = 0;
+  boss = null;
+  bossMinionsSpawned75 = false;
+  bossMinionsSpawned50 = false;
+  bossChargeState = "idle";
+  bossChargeTimer = 0;
+  bossChargeCooldown = 0;
+  bossAoeState = "idle";
+  bossAoeRadius = 0;
+  bossAoeDamageDealt = false;
+  bossChargeDamageDealt = false;
+  fading = false;
+  fadeAlpha = 0;
+
+  enemies.length = 0;
+  coins.length = 0;
+  spawnEnemies();
+
+  gameState = "playing";
+}
+
+// ============================================================
 // INPUT HANDLING
 // ============================================================
 // [input]
@@ -304,28 +360,38 @@ window.addEventListener("mouseup", (e) => {
   if (e.button === 0) keys["click"] = false;
 });
 
+// [restart handler] any key restarts after cooldown
+window.addEventListener("keydown", (e) => {
+  if (gameState === "dead" && deathScreenTimer <= 0) {
+    restartGame();
+  }
+});
+
 // [shop purchase handler]
 window.addEventListener("keydown", (e) => {
   if (!shopOpen) return;
   const prices = getShopPrices();
 
+  // [shop multiplier damage]
   if (e.key === "1") {
     if (coinCount >= prices.damagePrice) {
       coinCount -= prices.damagePrice;
-      player.damage = Math.floor(player.damage * 1.2);
+      player.damage = Math.floor(player.damage * 1.5);
     }
   }
+  // [shop multiplier health]
   if (e.key === "2") {
     if (coinCount >= prices.healthPrice) {
       coinCount -= prices.healthPrice;
-      player.maxHealth = Math.floor(player.maxHealth * 1.2);
+      player.maxHealth = Math.floor(player.maxHealth * 1.5);
       player.health = Math.min(player.health + player.maxHealth * 0.1, player.maxHealth);
     }
   }
+  // [shop multiplier speed]
   if (e.key === "3") {
     if (coinCount >= prices.speedPrice) {
       coinCount -= prices.speedPrice;
-      player.speed = Math.min(parseFloat((player.speed * 1.2).toFixed(2)), player.maxSpeed);
+      player.speed = Math.min(parseFloat((player.speed * 1.3).toFixed(2)), player.maxSpeed);
     }
   }
 });
@@ -347,6 +413,12 @@ function rectsOverlap(a, b) {
 // UPDATE LOOP
 // ============================================================
 function update() {
+
+  // [death gate] freeze all logic when dead
+  if (gameState === "dead") {
+    if (deathScreenTimer > 0) deathScreenTimer--;
+    return;
+  }
 
   if (!fading) {
 
@@ -389,11 +461,11 @@ function update() {
       // BOSS LOGIC
       // --------------------------------------------------------
       if (boss) {
-        const isEnraged = boss.health <= boss.maxHealth * 0.25;
+        const isEnraged = boss.health <= boss.maxHealth * 0.5;
 
         // [boss enrage]
         if (isEnraged) {
-          boss.speed = boss.baseSpeed * 2;
+          boss.speed = boss.baseSpeed * 4;
           boss.damage = 3;
           boss.color = "#ff0000";
         }
@@ -546,7 +618,18 @@ function update() {
       }
 
       // [health clamp]
-      player.health = Math.max(0, player.health);
+      if (DEV_IMMORTAL) {
+        player.health = Math.max(1, player.health); // never reaches 0
+      } else {
+        player.health = Math.max(0, player.health);
+      }
+
+      // [death check]
+      if (player.health <= 0) {
+        gameState = "dead";
+        deathScreenTimer = 120; // [death cooldown] 2 seconds at 60fps
+        return;
+      }
 
       // [player facing]
       if (keys["w"] || keys["ArrowUp"])    player.facing = "up";
@@ -885,20 +968,21 @@ function render() {
     ctx.lineTo(panelX + panelW - 20, panelY + 72);
     ctx.stroke();
 
+    // [shop multiplier UI]
     const canAffordDamage = coinCount >= prices.damagePrice;
     ctx.fillStyle = canAffordDamage ? "#ff6644" : "#666666";
     ctx.font = "bold 16px Courier New";
-    ctx.fillText("[1] +20% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 108);
+    ctx.fillText("[1] +50% Damage — " + prices.damagePrice + " coins", canvas.width / 2, panelY + 108);
 
     const canAffordHealth = coinCount >= prices.healthPrice;
     ctx.fillStyle = canAffordHealth ? "#4488ff" : "#666666";
-    ctx.fillText("[2] +20% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 150);
+    ctx.fillText("[2] +50% Max HP — " + prices.healthPrice + " coins", canvas.width / 2, panelY + 150);
 
     const canAffordSpeed = coinCount >= prices.speedPrice;
     const speedCapped = player.speed >= player.maxSpeed;
     ctx.fillStyle = canAffordSpeed && !speedCapped ? "#00ff88" : "#666666";
     ctx.fillText(
-      speedCapped ? "[3] Speed MAX" : "[3] +20% Speed — " + prices.speedPrice + " coins",
+      speedCapped ? "[3] Speed MAX" : "[3] +30% Speed — " + prices.speedPrice + " coins",
       canvas.width / 2, panelY + 192
     );
 
@@ -919,10 +1003,20 @@ function render() {
     ctx.textAlign = "left";
   }
 
-  // [draw fade overlay] always last
-  if (fadeAlpha > 0) {
-    ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // [draw death screen]
+  if (gameState === "dead") {
+    ctx.drawImage(deathScreen, 0, 0, canvas.width, canvas.height);
+
+    ctx.textAlign = "center";
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, canvas.height - 70, canvas.width, 70);
+
+    ctx.fillStyle = "#888888";
+    ctx.font = "18px Courier New";
+    ctx.fillText("Reached Room " + roomNumber + "   |   Press any key to Restart", canvas.width / 2, canvas.height - 28);
+
+    ctx.textAlign = "left";
   }
 }
 
@@ -941,7 +1035,8 @@ Promise.all([
   new Promise(res => roomCleared.onload = res),
   new Promise(res => healthBarEmpty.onload = res),
   new Promise(res => healthBarFull.onload = res),
-  new Promise(res => shopImage.onload = res)
+  new Promise(res => shopImage.onload = res),
+  new Promise(res => deathScreen.onload = res)
 ]).then(() => {
   gameLoop();
 });
