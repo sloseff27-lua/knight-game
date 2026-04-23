@@ -15,14 +15,18 @@ const DEV_IMMORTAL = true; // [dev] set true to disable death during testing
 // ASSETS
 // ============================================================
 const assets = {
-  roomBackground: "RoomImages/DungeonRoom1.png",
-  roomCleared:    "RoomImages/ClearedDungeonRoom1.png",
-  healthBarEmpty: "UserInterface/EmptyHealthBar.png",
-  healthBarFull:  "UserInterface/FullHealthBar.png",
-  shopImage:      "UserInterface/MerchantTable.png",
-  deathScreen:    "UserInterface/DeathScreen.png",
-  menuScreen:     "UserInterface/MenuScreen.png",
-  shopPanel:      "UserInterface/ShopPanel.png"
+  roomBackground:   "RoomImages/DungeonRoom3.png",
+  roomCleared:      "RoomImages/ClearedDungeonRoom3.png",
+  bossRoom1:        "RoomImages/WardenRoom.png",          // [boss1 room bg] room 10 - Warden
+  bossRoom1Cleared: "RoomImages/WardenRoomCleared.png",   // [boss1 cleared bg]
+  bossRoom2:        "RoomImages/ArchmageRoom.png",        // [boss2 room bg] room 20 - Archmage
+  bossRoom2Cleared: "RoomImages/ArchmageRoomCleared.png", // [boss2 cleared bg]
+  healthBarEmpty:   "UserInterface/EmptyHealthBar.png",
+  healthBarFull:    "UserInterface/FullHealthBar.png",
+  shopImage:        "UserInterface/MerchantTable.png",
+  deathScreen:      "UserInterface/DeathScreen.png",
+  menuScreen:       "UserInterface/MenuScreen.png",
+  shopPanel:        "UserInterface/ShopPanel.png",
 };
 const img = {};
 const imageLoads = Object.entries(assets).map(([key, src]) => {
@@ -132,7 +136,7 @@ let bossAoeDamageDealt = false;
 
 // [boss1 timed minion wave]
 let boss1MinionTimer = 0;
-const BOSS1_MINION_INTERVAL = 900; // [boss1 minion wave interval] 15 sec at 60fps
+const BOSS1_MINION_INTERVAL = 400; // [boss1 minion wave interval] 15 sec at 60fps
 
 // [boss2 attack state]
 let boss2ShootTimer = 0;
@@ -240,7 +244,7 @@ function spawnEnemies() {
 // DOOR / EXIT
 // ============================================================
 const exitDoor = {
-  x: canvas.width / 2 - 60, y: 150,
+  x: canvas.width / 2 - 60, y: 120,
   width: 120, height: 40
 };
 
@@ -389,8 +393,13 @@ function update() {
     if (keys["d"] || keys["ArrowRight"]) player.x += player.speed;
 
     // [wall bounds]
-    player.x = Math.max(250, Math.min(canvas.width  - player.width  - 250, player.x));
-    player.y = Math.max(160, Math.min(canvas.height - player.height - 130, player.y));
+    if (isBossRoom) {
+      player.x = Math.max(160, Math.min(canvas.width  - player.width  - 160, player.x));
+      player.y = Math.max(180, Math.min(canvas.height - player.height - 80, player.y));
+    } else {
+      player.x = Math.max(90, Math.min(canvas.width  - player.width  - 90, player.x));
+      player.y = Math.max(100, Math.min(canvas.height - player.height - 70, player.y));
+    }
 
     if (!isShopRoom) {
       updateEnemies();
@@ -417,7 +426,10 @@ function update() {
     }
 
     // [exit door check]
-    if (roomIsCleared && rectsOverlap(player, exitDoor)) { fading = true; fadeDirection = "out"; }
+    const door = isBossRoom
+      ? { x: canvas.width / 2 - 60, y: 150, width: 120, height: 40 }  // [boss room door y]
+      : { x: canvas.width / 2 - 60, y: 120, width: 120, height: 40 }; // [normal room door y]
+    if (roomIsCleared && rectsOverlap(player, door)) { fading = true; fadeDirection = "out"; }
   }
 
   // [fade transition]
@@ -783,8 +795,16 @@ function render() {
     return;
   }
 
-  // [draw background]
-  ctx.drawImage(roomIsCleared ? img.roomCleared : img.roomBackground, 0, 0, canvas.width, canvas.height);
+  // [draw background] — pick bg based on room type and cleared state
+  let bgImage;
+  if (roomNumber === 10) {
+    bgImage = roomIsCleared ? img.bossRoom1Cleared : img.bossRoom1; // [warden room bg]
+  } else if (roomNumber === 20) {
+    bgImage = roomIsCleared ? img.bossRoom2Cleared : img.bossRoom2; // [archmage room bg]
+  } else {
+    bgImage = roomIsCleared ? img.roomCleared : img.roomBackground;  // [normal room bg]
+  }
+  ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
 
   // [draw player]
   ctx.fillStyle = player.color;
