@@ -97,7 +97,7 @@ devChannel.onmessage = (e) => {
   if (type === "setCoins")    coinCount = value;
   if (type === "setRoom")     { roomNumber = value - 1; advanceRoom(); }
   if (type === "godMode")     { player.health = 99999; player.maxHealth = 99999; player.damage = 99999; coinCount = 9999; }
-  if (type === "heal")        player.health = player.maxHealth;
+  player.health
 };
 
 // ============================================================
