@@ -105,7 +105,7 @@ if (type === "heal")        player.health = player.maxHealth;
 // ============================================================
 const playerBase = { damage: 30, maxHealth: 100, speed: 4 };
 
-c
+
   x: canvas.width / 2 - 25,
   y: canvas.height / 2 - 25,
   width: 50, height: 50
