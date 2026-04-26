@@ -33,8 +33,7 @@ const img = {};
 // ============================================================
 // SPRITE ANIMATION
 // ============================================================
-const FRAME_W = 200, FRAME_H = 200;
-
+const FRAME_W = 192, FRAME_H = 128;
 const ANIMATIONS = {
   idle:      { row: 0, frames: 4 },
   walk:    { row: 2, frames: 4 },
@@ -107,7 +106,7 @@ const playerBase = { damage: 30, maxHealth: 100, speed: 4 };
 const player = {
   x: canvas.width / 2.08,
   y: canvas.height / 1.35,
-  width: 200, height: 200,
+  width: 96, height: 96,
   speed: 4,
   maxSpeed: 13,
   color: "slategray",
