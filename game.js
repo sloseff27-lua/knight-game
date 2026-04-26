@@ -15,6 +15,7 @@ const DEV_IMMORTAL = true; // [dev] set true to disable death during testing
 // ASSETS
 // ============================================================
 const assets = {
+  knightSheet: "sprites_background-removebg-preview.png",
   roomBackground:   "RoomImages/DungeonRoom3.png",
   roomCleared:      "RoomImages/ClearedDungeonRoom3.png",
   bossRoom1:        "RoomImages/WardenRoom.png",          // [boss1 room bg] room 10 - Warden
@@ -29,6 +30,37 @@ const assets = {
   shopPanel:        "UserInterface/ShopPanel.png",
 };
 const img = {};
+// ============================================================
+// SPRITE ANIMATION
+// ============================================================
+const FRAME_W = 48, FRAME_H = 64;
+
+const ANIMATIONS = {
+  idle:      { row: 0, frames: 4 },
+  walk:    { row: 2, frames: 4 },
+  attack:    { row: 4, frames: 4 },
+  dead:    { row: 6, frames: 5 },
+};
+
+let currentAnim = "idle";
+let currentFrame = 0;
+let frameTimer = 0;
+const FRAME_SPEED = 8;
+
+function updateAnimation(animName) {
+  if (currentAnim !== animName) { currentAnim = animName; currentFrame = 0; frameTimer = 0; }
+  if (++frameTimer >= FRAME_SPEED) { frameTimer = 0; currentFrame = (currentFrame + 1) % ANIMATIONS[currentAnim].frames; }
+}
+
+function drawKnight(x, y, facingLeft) {
+  const anim = ANIMATIONS[currentAnim];
+  const sx = currentFrame * FRAME_W;
+  const sy = anim.row * FRAME_H;
+  ctx.save();
+  if (facingLeft) { ctx.translate(x + player.width, y); ctx.scale(-1, 1); ctx.drawImage(img.knightSheet, sx, sy, FRAME_W, FRAME_H, 0, 0, player.width, player.height); }
+  else            { ctx.drawImage(img.knightSheet, sx, sy, FRAME_W, FRAME_H, x, y, player.width, player.height); }
+  ctx.restore();
+}
 const imageLoads = Object.entries(assets).map(([key, src]) => {
   img[key] = new Image();
   img[key].src = src;
@@ -73,32 +105,7 @@ devChannel.onmessage = (e) => {
 // ============================================================
 const playerBase = { damage: 30, maxHealth: 100, speed: 4 };
 
-// ============================================================
-// PLAYER OBJECT
-// ============================================================
-const player = {
-  x: canvas.width / 2.08,
-  y: canvas.height / 1.35,
-  width: 50, height: 50,
-  speed: 4,         // [player speed]
-  maxSpeed: 13,     // [player speed cap]
-  color: "slategray",
-  health: 100, maxHealth: 100,
-  facing: "right",
-  attackTimer: 0, attackCooldown: 0, attackHits: [],
-  damage: 30        // [player damage]
-};
-
-// ============================================================
-// COIN SYSTEM
-// ============================================================
-const coins = [];
-let coinCount = 0;
-
-// ============================================================
-// SHOP SYSTEM
-// ============================================================
-const shopBox = {
+c
   x: canvas.width / 2 - 25,
   y: canvas.height / 2 - 25,
   width: 50, height: 50
@@ -726,7 +733,10 @@ function updateAttack() {
   }
   if (player.attackTimer    > 0) player.attackTimer--;
   if (player.attackCooldown > 0) player.attackCooldown--;
-
+const animName = player.attackTimer > 0 ? "attack"
+    : (keys["w"] || keys["s"] || keys["a"] || keys["d"] || keys["ArrowUp"] || keys["ArrowDown"] || keys["ArrowLeft"] || keys["ArrowRight"]) ? "walk"
+    : "idle";
+  updateAnimation(animName);
   if (player.attackTimer > 0) {
     const attackBox = getAttackBox();
 
@@ -784,8 +794,7 @@ function render() {
   // [draw menu screen]
   if (gameState === "menu") {
     ctx.drawImage(img.menuScreen, 0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+    drawKnight(player.x, player.y, player.facing === "left");
     const pulse = 0.6 + Math.sin(Date.now() / 500) * 0.4;
     ctx.textAlign = "center";
     ctx.fillStyle = `rgba(255,220,100,${pulse})`;
