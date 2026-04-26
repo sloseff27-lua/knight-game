@@ -33,14 +33,15 @@ const img = {};
 // ============================================================
 // SPRITE ANIMATION
 // ============================================================
-const FRAME_W = 380, FRAME_H = 200;
+const FRAME_W = 153, FRAME_H = 100;
 const SHEET_OFFSET_X = 0;
-const SHEET_OFFSET_Y = 130;
+const SHEET_OFFSET_Y = 20;
 const ANIMATIONS = {
-  idle:   { row: 0, frames: 3 },
+  idle:   { row: 0, frames: 4 },
   walk:   { row: 1, frames: 4 },
-  attack: { row: 3, frames: 3 },
-  dead:   { row: 5, frames: 4 },
+  attack: { row: 2, frames: 4 },
+  dead:   { row: 2, frames: 4 },
+};
 };
 };
 
