@@ -33,7 +33,9 @@ const img = {};
 // ============================================================
 // SPRITE ANIMATION
 // ============================================================
-const FRAME_W = 192, FRAME_H = 128;
+const FRAME_W = 150, FRAME_H = 150;
+const SHEET_OFFSET_X = 0;
+const SHEET_OFFSET_Y = 130;
 const ANIMATIONS = {
   idle:      { row: 0, frames: 4 },
   walk:    { row: 2, frames: 4 },
@@ -53,8 +55,8 @@ function updateAnimation(animName) {
 
 function drawKnight(x, y, facingLeft) {
   const anim = ANIMATIONS[currentAnim];
-  const sx = currentFrame * FRAME_W;
-  const sy = anim.row * FRAME_H;
+  const sx = SHEET_OFFSET_X + currentFrame * FRAME_W;
+const sy = SHEET_OFFSET_Y + anim.row * FRAME_H;
   ctx.save();
   if (facingLeft) { ctx.translate(x + player.width, y); ctx.scale(-1, 1); ctx.drawImage(img.knightSheet, sx, sy, FRAME_W, FRAME_H, 0, 0, player.width, player.height); }
   else            { ctx.drawImage(img.knightSheet, sx, sy, FRAME_W, FRAME_H, x, y, player.width, player.height); }
