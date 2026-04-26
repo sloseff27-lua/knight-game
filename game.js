@@ -33,7 +33,7 @@ const img = {};
 // ============================================================
 // SPRITE ANIMATION
 // ============================================================
-const FRAME_W = 48, FRAME_H = 64;
+const FRAME_W = 96, FRAME_H = 96;
 
 const ANIMATIONS = {
   idle:      { row: 0, frames: 4 },
