@@ -96,8 +96,8 @@ devChannel.onmessage = (e) => {
   if (type === "setSpeed")    player.speed = Math.min(value, player.maxSpeed);
   if (type === "setCoins")    coinCount = value;
   if (type === "setRoom")     { roomNumber = value - 1; advanceRoom(); }
- if (type === "godMode")     { player.health = 99999; player.maxHealth = 99999; player.damage = 99999; coinCount = 9999; } }
-if (type === "heal")        player.health = player.maxHealth;
+ if (type === "godMode")     { player.health = 99999; player.maxHealth = 99999; player.damage = 99999; coinCount = 9999; }
+  if (type === "heal")        player.health = player.maxHealth;
 };
 
 // ============================================================
@@ -105,7 +105,23 @@ if (type === "heal")        player.health = player.maxHealth;
 // ============================================================
 const playerBase = { damage: 30, maxHealth: 100, speed: 4 };
 
+const player = {
+  x: canvas.width / 2.08,
+  y: canvas.height / 1.35,
+  width: 50, height: 50,
+  speed: 4,
+  maxSpeed: 13,
+  color: "slategray",
+  health: 100, maxHealth: 100,
+  facing: "right",
+  attackTimer: 0, attackCooldown: 0, attackHits: [],
+  damage: 30
+};
 
+const coins = [];
+let coinCount = 0;
+
+const shopBox = {
   x: canvas.width / 2 - 25,
   y: canvas.height / 2 - 25,
   width: 50, height: 50
@@ -794,7 +810,6 @@ function render() {
   // [draw menu screen]
   if (gameState === "menu") {
     ctx.drawImage(img.menuScreen, 0, 0, canvas.width, canvas.height);
-    drawKnight(player.x, player.y, player.facing === "left");
     const pulse = 0.6 + Math.sin(Date.now() / 500) * 0.4;
     ctx.textAlign = "center";
     ctx.fillStyle = `rgba(255,220,100,${pulse})`;
@@ -815,10 +830,8 @@ function render() {
   }
   ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
 
-  // [draw player]
-  ctx.fillStyle = player.color;
-  ctx.fillRect(player.x, player.y, player.width, player.height);
-
+ // [draw player]
+  drawKnight(player.x, player.y, player.facing === "left");
   // [draw enemies]
   enemies.forEach(e => { ctx.fillStyle = e.color; ctx.fillRect(e.x, e.y, e.width, e.height); });
 
