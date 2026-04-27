@@ -42,9 +42,6 @@ const ANIMATIONS = {
   attack: { row: 2, frames: 4 },
   dead:   { row: 2, frames: 4 },
 };
-};
-};
-
 let currentAnim = "idle";
 let currentFrame = 0;
 let frameTimer = 0;
