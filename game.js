@@ -9,7 +9,7 @@ canvas.height = window.innerHeight;
 // ============================================================
 // DEV FLAGS
 // ============================================================
-const DEV_IMMORTAL = false; // [dev] set true to disable death during testing
+const DEV_IMMORTAL = true; // [dev] set true to disable death during testing
 
 // ============================================================
 // ASSETS
@@ -102,6 +102,18 @@ const player = {
   facing: "right",
   attackTimer: 0, attackCooldown: 0, attackHits: [],
   damage: 30
+};
+
+// ============================================================
+// KNOCKBACK CONFIG
+// Per enemy type: force = initial pixel push, decay = multiplier per frame (lower = stops faster)
+// Bosses are intentionally excluded — no knockback applied to boss entities.
+// ============================================================
+const knockbackConfig = {
+  speeder: { force: 28, decay: 0.72 }, // [speeder knockback] lightest enemy, flies back the most
+  common:  { force: 14, decay: 0.75 }, // [common knockback]  standard bounce
+  ranged:  { force: 12, decay: 0.74 }, // [ranged knockback]  similar to common, slightly less
+  tank:    { force:  4, decay: 0.65 }, // [tank knockback]    heavy, barely budges
 };
 
 // ============================================================
@@ -268,7 +280,8 @@ function spawnEnemies() {
       speed: speed * c.speedMult,
       color: c.color,
       health: hp * c.hpMult,
-      type
+      type,
+      knockbackVx: 0, knockbackVy: 0 // [knockback velocity, initialised to 0]
     };
     if (type === "ranged") { enemy.shootTimer = 0; enemy.shootCooldown = 150; } // [ranged shoot cooldown]
     enemies.push(enemy);
@@ -374,8 +387,8 @@ window.addEventListener("mousedown", e => { if (e.button === 0) keys["click"] = 
 window.addEventListener("mouseup",   e => { if (e.button === 0) keys["click"] = false; });
 
 window.addEventListener("keydown", e => {
-  if (gameState === "menu") restartGame();
-  else if (gameState === "dead" && deathScreenTimer <= 0) restartGame();
+  if (gameState === "menu" && e.code === "Space") restartGame();
+  else if (gameState === "dead" && deathScreenTimer <= 0 && e.code === "Space") restartGame();
 });
 
 window.addEventListener("keydown", e => {
@@ -464,6 +477,18 @@ function update() {
 // ============================================================
 function updateEnemies() {
   enemies.forEach(enemy => {
+    // [apply and decay knockback velocity before any other movement]
+    if (enemy.knockbackVx) {
+      enemy.x += enemy.knockbackVx;
+      enemy.knockbackVx *= knockbackConfig[enemy.type]?.decay ?? 0.75;
+      if (Math.abs(enemy.knockbackVx) < 0.1) enemy.knockbackVx = 0;
+    }
+    if (enemy.knockbackVy) {
+      enemy.y += enemy.knockbackVy;
+      enemy.knockbackVy *= knockbackConfig[enemy.type]?.decay ?? 0.75;
+      if (Math.abs(enemy.knockbackVy) < 0.1) enemy.knockbackVy = 0;
+    }
+
     const dx = player.x - enemy.x, dy = player.y - enemy.y;
     const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
@@ -527,7 +552,8 @@ function updateBoss() {
         } while (Math.sqrt((ex - player.x) ** 2 + (ey - player.y) ** 2) < 150 && ++attempts < 20);
         enemies.push({ x: ex, y: ey, width: 25, height: 25,
           speed: (1.5 + roomNumber * 0.1) * 0.5,
-          color: "#cc4400", health: 20 + roomNumber * 3, type: "common" });
+          color: "#cc4400", health: 20 + roomNumber * 3, type: "common",
+          knockbackVx: 0, knockbackVy: 0 }); // [minions also have knockback fields]
       }
     }
   }
@@ -733,9 +759,17 @@ function updateAttack() {
       if (rectsOverlap(attackBox, enemy) && !player.attackHits.includes(i)) {
         enemy.health -= player.damage;
         player.attackHits.push(i);
+
+        // [apply knockback — direction away from player, force varies by enemy type]
+        const kb = knockbackConfig[enemy.type] ?? knockbackConfig.common;
+        const kbDx = enemy.x - player.x, kbDy = enemy.y - player.y;
+        const kbDist = Math.sqrt(kbDx * kbDx + kbDy * kbDy) || 1;
+        enemy.knockbackVx = (kbDx / kbDist) * kb.force;
+        enemy.knockbackVy = (kbDy / kbDist) * kb.force;
       }
     });
 
+    // [bosses intentionally receive no knockback — they are too large to be pushed]
     if (boss && rectsOverlap(attackBox, boss) && !player.attackHits.includes("boss")) {
       boss.health -= player.damage;
       player.attackHits.push("boss");
@@ -786,7 +820,7 @@ function render() {
     ctx.textAlign = "center";
     ctx.fillStyle = `rgba(255,220,100,${pulse})`;
     ctx.font = "bold 26px Courier New";
-    ctx.fillText("Press any key to Play", canvas.width / 2, canvas.height - 30);
+    ctx.fillText("Press Space to Play", canvas.width / 2, canvas.height - 30);
     ctx.textAlign = "left";
     return;
   }
@@ -970,7 +1004,7 @@ function renderShop() {
   const px = canvas.width / 2 - pw / 2, py = canvas.height / 2 - ph / 2;
   ctx.drawImage(img.shopPanel, px, py, pw, ph);
   ctx.textAlign = "center";
-  ctx.fillStyle = "#FFD700"; ctx.font = "bold 16px Courier New";
+  ctx.fillStyle = "#FFD700"; ctx.font = "bold 20px Courier New";
   ctx.fillText("Coins: " + coinCount, canvas.width / 2, py + 130);
 
   const items = [
@@ -984,8 +1018,8 @@ function renderShop() {
     ctx.fillText(item.label, canvas.width / 2, item.y);
   });
 
-  ctx.fillStyle = "#aaffaa"; ctx.font = "14px Courier New"; ctx.fillText(shopHealMessage, canvas.width / 2, py + 390);
-  ctx.fillStyle = "#888888"; ctx.font = "13px Courier New"; ctx.fillText("Press 1, 2 or 3 to buy. Walk away to close.", canvas.width / 2, py + 460);
+  ctx.fillStyle = "#13d013"; ctx.font = "18px Courier New"; ctx.fillText(shopHealMessage, canvas.width / 2, py + 390);
+  ctx.fillStyle = "#c9eb1c"; ctx.font = "15px Courier New"; ctx.fillText("Press 1, 2 or 3 to buy. Walk away to close.", canvas.width / 2, py + 460);
   ctx.textAlign = "left";
 }
 
